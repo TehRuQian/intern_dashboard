@@ -1,7 +1,0 @@
-Options -Indexes
-<IfModule mod_alias.c>
-    RedirectMatch 404 "(^|/)\."
-</IfModule>
-<FilesMatch "^(\.env.*|composer\.(json|lock)|README\.md)$">
-    Require all denied
-</FilesMatch>

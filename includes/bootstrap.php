@@ -11,6 +11,7 @@ session_save_path($sessionDirectory);
 session_start();
 if (empty($_SESSION['csrf'])) { $_SESSION['csrf'] = bin2hex(random_bytes(32)); }
 require_once dirname(__DIR__) . '/config/db.php';
+require_once __DIR__ . '/workflow.php';
 
 function respond($data, int $status = 200): void {
     http_response_code($status);
@@ -29,11 +30,32 @@ function execute_sql(string $sql, array $params = []): int {
     $stmt = $pdo->prepare($sql); $stmt->execute($params); return $stmt->rowCount();
 }
 function interns(): array {
-    return rows("SELECT employee_id, full_name FROM users WHERE full_name IN ('Yong Wei','Teh Ru Qian','Elijah She') ORDER BY FIELD(full_name,'Yong Wei','Teh Ru Qian','Elijah She')");
+    $people = rows('SELECT employee_id, full_name, internship_start, internship_end FROM users WHERE internship_start IS NOT NULL OR internship_end IS NOT NULL ORDER BY full_name');
+    $today = date('Y-m-d');
+    foreach ($people as &$person) {
+        $person['is_active'] = !empty($person['internship_start']) && !empty($person['internship_end'])
+            && $person['internship_start'] <= $today && $person['internship_end'] >= $today;
+    }
+    unset($person);
+    return $people;
 }
 function intern_ids(): array { return array_column(interns(), 'employee_id'); }
+function add_intern(array $input): string {
+    $employee = text_field($input['employee_id'] ?? null, 'Employee ID', 30, true);
+    $name = text_field($input['full_name'] ?? null, 'Full name', 150, true);
+    $start = date_value($input['internship_start'] ?? null, 'Internship start', true);
+    $end = date_value($input['internship_end'] ?? null, 'Internship end', true);
+    if ($start > $end) { invalid('Internship end must be on or after the start date.'); }
+    try {
+        execute_sql('INSERT INTO users (employee_id, full_name, internship_start, internship_end) VALUES (?, ?, ?, ?)', [$employee, $name, $start, $end]);
+    } catch (PDOException $e) {
+        if (($e->errorInfo[1] ?? null) === 1062) { invalid('An employee with this ID or full name already exists.'); }
+        throw $e;
+    }
+    return $employee;
+}
 function validate_employee(string $id): string {
-    if (!in_array($id, intern_ids(), true)) { invalid('Choose one of the three interns.'); } return $id;
+    if (!in_array($id, intern_ids(), true)) { invalid('Choose an intern from the list.'); } return $id;
 }
 function date_value($value, string $label, bool $required = false): ?string {
     if ($value === '' || $value === null) { if ($required) { invalid("$label is required."); } return null; }
@@ -87,6 +109,7 @@ function name_pattern(string $name): string {
 function module_where(array $m, array $f): array {
     $conditions = []; $params = [];
     $people = interns();
+    if (!empty($f['active_only'])) { $people = array_values(array_filter($people, fn($p) => $p['is_active'])); }
     if ($f['employee_id'] !== '') { $people = array_values(array_filter($people, fn($p) => $p['employee_id'] === $f['employee_id'])); }
     if ($m['pic']) {
         $parts = [];
@@ -94,7 +117,7 @@ function module_where(array $m, array $f): array {
         $conditions[] = '(' . implode(' OR ', $parts ?: ['0=1']) . ')';
     } else {
         $ids = array_column($people, 'employee_id');
-        $conditions[] = 't.employee_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')';
+        $conditions[] = $ids ? 't.employee_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')' : '0=1';
         array_push($params, ...$ids);
     }
     $date = 't.' . $m['date'];
@@ -132,14 +155,17 @@ function module_rows(string $module, array $f, bool $paginate = true): array {
     $join = $module === 'activities' ? ' JOIN users u ON u.employee_id = t.employee_id' : '';
     $sql = 'SELECT ' . $select . ' FROM ' . $m['table'] . ' t' . $join . ' WHERE ' . $where . " ORDER BY t.$sort $dir, t." . $m['id'] . ' DESC';
     if ($paginate) { $sql .= ' LIMIT ' . $size . ' OFFSET ' . (($page - 1) * $size); }
-    return ['rows' => rows($sql, $params), 'total' => $count, 'page' => $page, 'pages' => max(1, (int)ceil($count / $size)), 'page_size' => $size];
+    return ['rows' => array_map(fn($r) => decorate_record($module, $r), rows($sql, $params)), 'total' => $count, 'page' => $page, 'pages' => max(1, (int)ceil($count / $size)), 'page_size' => $size];
 }
 function kpi_types(): array {
     return rows('SELECT k.*, c.category_name FROM kpi_types k JOIN kpi_categories c ON c.category_id = k.category_id ORDER BY c.sort_order, c.category_id, k.sort_order, k.kpi_id');
 }
 function kpi_rows(array $f): array {
-    $ids = $f['employee_id'] !== '' ? [$f['employee_id']] : intern_ids();
-    $conditions = ['r.employee_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')']; $params = $ids;
+    $people = interns();
+    if (!empty($f['active_only'])) { $people = array_values(array_filter($people, fn($p) => $p['is_active'])); }
+    $ids = array_column($people, 'employee_id');
+    if ($f['employee_id'] !== '') { $ids = array_values(array_intersect($ids, [$f['employee_id']])); }
+    $conditions = [$ids ? 'r.employee_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')' : '0=1']; $params = $ids;
     if ($f['status'] !== '' || $f['search'] !== '') { invalid('Status and text search do not apply to weekly KPI.'); }
     foreach (['year' => 'week_year', 'week' => 'week_no', 'kpi_id' => 'kpi_id'] as $key => $col) {
         if ($f[$key]) { $conditions[] = "r.$col = ?"; $params[] = $f[$key]; }
@@ -191,10 +217,10 @@ function validate_record(string $module, array $input): array {
     }
     if ($m['pic']) {
         $pic = $out[$m['pic']];
-        if (!$pic) { invalid('Enter at least one intern in the PIC / developer field.'); }
+        if (!$pic) { invalid('Choose at least one intern for this assignment.'); }
         $matched = false;
         foreach (interns() as $p) { if (preg_match('/' . name_pattern($p['full_name']) . '/iu', $pic)) { $matched = true; } }
-        if (!$matched) { invalid('PIC / developers must include at least one intern’s full name. Other people may also be included.'); }
+        if (!$matched) { invalid('Assign this task to at least one intern. Dalila is the supervisor; use feedback for supervisor notes.'); }
     }
     return $out;
 }

@@ -3,7 +3,7 @@ window.Records={
  current:null, saving:false, formChanged:false, modalReady:false,
  toolbar(module,data) {
   const A=App,c=ModuleConfig[module];
-  return `<div class="table-toolbar"><form id="searchForm" class="d-flex gap-2 search"><input type="search" id="recordSearch" class="form-control" aria-label="Search records" placeholder="Search tasks, remarks…" value="${A.esc(A.state.search)}"><button class="btn btn-light btn-sm" type="submit">Search</button></form><select id="recordStatus" class="form-select" aria-label="Filter status"><option value="">All statuses</option>${c.statuses.map(s=>`<option value="${s}" ${s===A.state.status?'selected':''}>${A.esc(A.label(s))}</option>`).join('')}</select><select id="recordSort" class="form-select" aria-label="Sort records">${[[c.date+':desc','Newest date first'],[c.date+':asc','Oldest date first'],[c.name+':asc','Title A–Z'],[c.status+':asc','Status']].map(([v,l])=>`<option value="${v}" ${v===(A.state.sort||c.date)+':'+A.state.direction?'selected':''}>${l}</option>`).join('')}</select>${module==='projects'?`<button class="btn btn-light btn-sm" id="toggleProjectView">${A.state.projectView==='table'?'Card view':'Table view'}</button>`:''}<span class="record-count">${A.num(data.total)} records</span></div>`;
+  return `<div class="table-toolbar"><form id="searchForm" class="d-flex gap-2 search"><input type="search" id="recordSearch" class="form-control" aria-label="Search records" placeholder="Search tasks, remarks…" value="${A.esc(A.state.search)}"><button class="btn btn-light btn-sm" type="submit">Search</button></form><select id="recordStatus" class="form-select" aria-label="Filter status"><option value="">All statuses</option>${c.statuses.map(s=>`<option value="${s}" ${s===A.state.status?'selected':''}>${A.esc(A.label(s))}</option>`).join('')}</select><select id="recordSort" class="form-select" aria-label="Sort records">${[[c.date+':desc','Newest date first'],[c.date+':asc','Oldest date first'],...(module==='activities'?[]:[[c.name+':asc','Title A–Z'],[c.status+':asc','Status']])].map(([v,l])=>`<option value="${v}" ${v===(A.state.sort||c.date)+':'+A.state.direction?'selected':''}>${l}</option>`).join('')}</select>${module==='projects'?`<button class="btn btn-light btn-sm" id="toggleProjectView">${A.state.projectView==='table'?'Card view':'Table view'}</button>`:''}<span class="record-count">${A.num(data.total)} records</span></div>`;
  },
  actions(module,r) {
   const A=App,c=ModuleConfig[module];
@@ -16,11 +16,22 @@ window.Records={
   if(key.endsWith('_date'))return `<span class="text-nowrap">${A.date(v)}</span>`+(key==='due_date' && module==='tasks' && v && v<A.meta.today && r.status!=='completed'?'<div class="mt-1">'+A.badge('overdue')+'</div>':'');
   return `<span class="${[c.name,'remarks','milestone'].includes(key)?'truncate':''}" title="${A.esc(v)}">${A.esc(v??'—')}</span>`;
  },
+ timeline(rows) {
+  const A=App,groups=new Map();
+  for(const r of rows){
+   const date=r.activity_date||'';
+   if(!groups.has(date))groups.set(date,[]);
+   groups.get(date).push(r);
+  }
+  const dates=[...groups.keys()].sort((a,b)=>A.state.direction==='asc'?a.localeCompare(b):b.localeCompare(a));
+  return `<div class="daily-timeline">${dates.map(date=>`<section class="daily-date-group"><h2 class="daily-date-heading">${date?A.date(date):'Undated'}<span>${groups.get(date).length} ${groups.get(date).length===1?'update':'updates'}</span></h2><div class="daily-cards">${groups.get(date).map(r=>`<article class="daily-log-card"><div class="daily-card-heading"><h3><button class="task-title" data-record-action="view" data-module="activities" data-id="${r.activity_id}">${A.esc(r.task_title)}</button></h3>${A.badge(r.status)}</div><p class="daily-author">${A.esc(r.full_name||r.employee_id)}</p>${r.milestone?`<div class="daily-card-section"><h4>Achievement / learning</h4><p>${A.esc(r.milestone)}</p></div>`:''}${r.remarks?`<div class="daily-card-section"><h4>Remarks</h4><p>${A.esc(r.remarks)}</p></div>`:''}<div class="daily-card-actions">${this.actions('activities',r)}</div></article>`).join('')}</div></section>`).join('')}</div>`;
+ },
  async render(module) {
   const A=App,c=ModuleConfig[module],data=await A.api('list',{module});
   A.$('pageActions').innerHTML=`<button class="btn btn-light" id="exportRecords">↓ Export CSV</button><button class="btn btn-primary" id="addRecord">＋ Add ${c.singular.toLowerCase()}</button>`;
   let body='';
   if(!data.rows.length)body=A.empty();
+  else if(module==='activities')body=this.timeline(data.rows);
   else if(module==='projects' && A.state.projectView==='cards')body='<div class="project-cards">'+data.rows.map(r=>`<article class="project-card"><div class="mb-3">${A.badge(r.development_status)}</div><h3>${A.esc(r.project_name)}</h3><div class="pic">${A.esc(r.developers)}</div><div class="dates">Due ${A.date(r.due_date)}</div>${A.progress(r.progress_percent)}<div class="mt-3">${this.actions(module,r)}</div></article>`).join('')+'</div>';
   else body=`<div class="table-responsive"><table class="table table-hover"><thead><tr>${c.columns.map(([,label])=>`<th>${label}</th>`).join('')}<th>Actions</th></tr></thead><tbody>${data.rows.map(r=>`<tr class="${module==='tasks'&&r.due_date&&r.due_date<A.meta.today&&r.status!=='completed'?'overdue-row':''}">${c.columns.map(([key])=>`<td class="${key===c.name?'title-cell':''}">${this.cell(module,r,key)}</td>`).join('')}<td>${this.actions(module,r)}</td></tr>`).join('')}</tbody></table></div>`;
   A.$('pageContent').innerHTML='<section class="panel">'+this.toolbar(module,data)+body+A.pagination(data)+'</section>';
@@ -64,10 +75,10 @@ window.Records={
     if(type==='textarea')input=`<textarea class="form-control" ${attrs} rows="3" maxlength="16000">${A.esc(value)}</textarea>`;
     else if(type==='intern')input=`<select class="form-select" ${attrs}><option value="">Select intern</option>${A.meta.interns.map(p=>`<option value="${A.esc(p.employee_id)}" ${p.employee_id===value?'selected':''}>${A.esc(p.full_name)}</option>`).join('')}</select>`;
     else if(type==='select')input=`<select class="form-select" ${attrs}>${options.map(v=>`<option value="${v}" ${v===value?'selected':''}>${A.label(v)}</option>`).join('')}</select>`;
-    else input=`<input class="form-control" ${attrs} type="${type==='pic'?'text':type}" value="${A.esc(value)}" ${type==='number'?'min="0" max="100" step="1"':typeof options==='number'?`maxlength="${options}"`:''} ${type==='pic'?'list="peopleNames"':''}>`;
+    else input=`<input class="form-control" ${attrs} type="${type==='pic'?'text':type}" value="${A.esc(value)}" ${type==='number'?'min="0" max="100" step="1"':typeof options==='number'?`maxlength="${options}"`:''} ${type==='pic'?'list="internNames"':''}>`;
     if(type==='pic')input+='<small class="text-muted">Use full names; separate multiple people with commas. Include at least one intern.</small>';
     return `<div class="${full?'col-12':'col-md-6'}"><label class="form-label" for="field_${key}">${label}${required?' *':''}</label>${input}</div>`;
-   }).join('')+'<datalist id="peopleNames">'+A.meta.people.map(p=>`<option value="${A.esc(p.full_name)}"></option>`).join('')+'</datalist>';
+   }).join('')+'<datalist id="peopleNames">'+A.meta.people.map(p=>`<option value="${A.esc(p.full_name)}"></option>`).join('')+'</datalist><datalist id="internNames">'+A.meta.interns.map(p=>`<option value="${A.esc(p.full_name)}"></option>`).join('')+'</datalist>';
    if(viewOnly)A.$('modalFields').innerHTML+=`<div class="col-12 border-top pt-3 text-muted small">Created: ${A.esc(record.created_at)} · Updated: ${A.esc(record.updated_at)}</div>`;
    this.modalReady=false;
    bootstrap.Modal.getOrCreateInstance(A.$('recordModal')).show();

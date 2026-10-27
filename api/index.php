@@ -9,11 +9,11 @@ set_exception_handler(function (Throwable $e): void {
     error_log((string)$e);
     respond('The request could not be completed. Check the server log and database connection, then retry.', 500);
 });
-if (!$pdo) { respond('Database unavailable. Check your local database settings and start MySQL in Laragon.', 503); }
+if (!$pdo) { respond('Database unavailable. Check your database settings (.env) and verify MySQL is running.', 503); }
 header('X-Content-Type-Options: nosniff');
 $action = $_GET['action'] ?? 'metadata';
 $module = $_GET['module'] ?? '';
-$write = ['save','delete','save_kpi'];
+$write = ['save','delete','save_kpi','undo','add_intern'];
 if (in_array($action, $write, true)) {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') { header('Allow: POST'); respond('Use POST for this action.', 405); }
     if (!hash_equals($_SESSION['csrf'], (string)($_SERVER['HTTP_X_CSRF_TOKEN'] ?? ''))) { respond('The session expired. Refresh the page before saving.', 403); }
@@ -28,7 +28,14 @@ session_write_close();
 function version(array $record): string { return hash('sha256', json_encode($record)); }
 function find_record(array $m, int $id, bool $lock = false): array {
     $r = rows('SELECT * FROM ' . $m['table'] . ' WHERE ' . $m['id'] . ' = ?' . ($lock ? ' FOR UPDATE' : ''), [$id]);
-    if (!$r) { respond('This record no longer exists.', 404); } return $r[0];
+    if (!$r) { respond('This record no longer exists.', 404); }
+    $module = array_search($m, modules(), true);
+    return decorate_record($module, $r[0]);
+}
+require __DIR__ . '/workflow_routes.php';
+if ($action === 'interns') { respond(interns()); }
+if ($action === 'add_intern') {
+    respond(['employee_id' => add_intern($input)], 201);
 }
 if ($action === 'metadata') {
     $stats = rows('SELECT MIN(week_year) AS first_year, MAX(week_year) AS last_year FROM kpi_records')[0];
@@ -45,6 +52,9 @@ if (in_array($action, ['list','detail','save','delete'], true)) {
     if ($action === 'delete' && !$id) { invalid('Record ID is required.'); }
     if ($action === 'save' && !is_array($input['record'] ?? null)) { invalid('Provide the record fields as a JSON object.'); }
     $data = $action === 'save' ? validate_record($module, $input['record']) : [];
+    if ($action === 'save' && $module === 'tasks' && !array_key_exists('tat_description', $input['record'])) {
+        unset($data['tat_description']);
+    }
     $pdo->beginTransaction();
     $existing = null;
     if ($id) {
@@ -52,8 +62,10 @@ if (in_array($action, ['list','detail','save','delete'], true)) {
         if (!hash_equals(version($existing), (string)($input['version'] ?? ''))) { throw new RuntimeException('This record changed after you opened it. Reload its details and try again.', 409); }
     }
     if ($action === 'delete') {
+        record_history($module, $id, 'deleted', $existing, $input);
         execute_sql('DELETE FROM ' . $m['table'] . ' WHERE ' . $m['id'] . ' = ?', [$id]);
     } else {
+        $data = sync_work_completion($module, $data, $existing);
         if ($module === 'tasks') {
             $data['completed_at'] = $data['status'] === 'completed' ? ($existing && $existing['status'] === 'completed' ? $existing['completed_at'] : date('Y-m-d H:i:s')) : null;
         }
@@ -64,8 +76,10 @@ if (in_array($action, ['list','detail','save','delete'], true)) {
             execute_sql('INSERT INTO ' . $m['table'] . ' (' . implode(',', $columns) . ') VALUES (' . implode(',', array_fill(0, count($columns), '?')) . ')', array_values($data));
             $id = (int)$pdo->lastInsertId();
         }
+        record_history($module, $id, $existing ? 'updated' : 'created', $existing, $input);
     }
-    $pdo->commit(); respond(['id' => $id]);
+    $history = (int)rows('SELECT MAX(history_id) AS id FROM work_history WHERE module=? AND record_id=?', [$module,$id])[0]['id'];
+    $pdo->commit(); respond(['id' => $id, 'history_id' => $history]);
 }
 if ($action === 'kpi') {
     $f = filters(); $records = kpi_rows($f);
@@ -121,6 +135,7 @@ if ($action === 'save_kpi') {
 }
 if ($action === 'dashboard') {
     $f = filters(); $f['status'] = ''; $f['search'] = '';
+    $f['active_only'] = true;
     $activities = module_rows('activities', $f, false)['rows'];
     $tasks = module_rows('tasks', $f, false)['rows'];
     $projects = module_rows('projects', $f, false)['rows'];
@@ -150,11 +165,13 @@ if ($action === 'report' || $action === 'export') {
             $groups[$key]['total']++; $groups[$key][$r['status']]++;
         } $data = array_values($groups);
         $columns = ['month','employee_id','intern','total','pending','in_progress','completed'];
+    } elseif ($module === 'work') {
+        $data=work_items($f);$columns=['title','people','type','stage','assigned_date','due_date','progress','overdue'];
     } elseif ($module === 'kpi') {
         $data = kpi_rows($f); $columns = ['employee_id','full_name','category_name','kpi_name','unit','week_year','week_no','quantity','remarks'];
     } elseif (isset(modules()[$module])) {
         $m = modules()[$module]; $data = module_rows($module, $f, false)['rows'];
-        $columns = [$m['id'], ...$m['fields']]; if ($module === 'activities') { $columns[] = 'full_name'; }
+        $columns = array_values(array_diff([$m['id'], ...$m['fields']], ['tat_description'])); if ($module === 'activities') { $columns[] = 'full_name'; }
     } else { invalid('Unknown report type.'); }
     $formatted = array_map(fn($r) => array_intersect_key(array_replace(array_fill_keys($columns, null), $r), array_flip($columns)), $data);
     if ($action === 'report') { respond(['columns' => $columns, 'rows' => $formatted, 'total' => count($formatted)]); }
