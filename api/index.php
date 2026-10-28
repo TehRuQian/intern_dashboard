@@ -139,7 +139,7 @@ if ($action === 'dashboard') {
     $activities = module_rows('activities', $f, false)['rows'];
     $tasks = module_rows('tasks', $f, false)['rows'];
     $projects = module_rows('projects', $f, false)['rows'];
-    $records = kpi_rows($f); $trend = []; $distribution = []; $statuses = array_fill_keys(['pending','in_progress','on_hold','completed'], 0); $units = [];
+    $records = kpi_rows($f); $trend = []; $distribution = []; $statuses = array_fill_keys(['pending','in_progress','ready_for_review','completed'], 0); $units = [];
     foreach ($records as $r) {
         $label = $r['week_year'] . '-WW' . str_pad((string)$r['week_no'], 2, '0', STR_PAD_LEFT);
         $trend[$label] = ($trend[$label] ?? 0) + (float)$r['quantity'];
@@ -150,7 +150,7 @@ if ($action === 'dashboard') {
     ksort($trend);
     $completed = fn($r) => $r['status'] === 'completed';
     respond([
-        'summary' => [count($activities), count(array_filter($activities, $completed)), count($units) <= 1 ? array_sum(array_column($records, 'quantity')) : null, count($tasks), $statuses['pending'], $statuses['completed'], count(array_filter($projects, fn($p) => in_array($p['development_status'], ['in_progress','testing'], true))), count(array_filter($tasks, fn($t) => $t['due_date'] && $t['due_date'] < date('Y-m-d') && $t['status'] !== 'completed'))],
+        'summary' => [count($activities), count(array_filter($activities, $completed)), count($units) <= 1 ? array_sum(array_column($records, 'quantity')) : null, count($tasks), $statuses['pending'], $statuses['completed'], count(array_filter($projects, fn($p) => in_array($p['development_status'], ['in_progress','ready_for_review'], true))), count(array_filter($tasks, fn($t) => $t['due_date'] && $t['due_date'] < date('Y-m-d') && $t['status'] !== 'completed'))],
         'trend' => count($units) <= 1 ? $trend : [], 'distribution' => count($units) <= 1 ? $distribution : [], 'statuses' => $statuses,
         'projects' => $projects, 'recent' => array_slice($activities, 0, 6), 'mixed_units' => count($units) > 1,
     ]);
@@ -171,7 +171,8 @@ if ($action === 'report' || $action === 'export') {
         $data = kpi_rows($f); $columns = ['employee_id','full_name','category_name','kpi_name','unit','week_year','week_no','quantity','remarks'];
     } elseif (isset(modules()[$module])) {
         $m = modules()[$module]; $data = module_rows($module, $f, false)['rows'];
-        $columns = array_values(array_diff([$m['id'], ...$m['fields']], ['tat_description'])); if ($module === 'activities') { $columns[] = 'full_name'; }
+        $columns = array_values(array_diff([$m['id'], ...$m['fields']], ['tat_description']));
+        if ($module === 'activities') { $columns = array_values(array_diff($columns, ['activity_id'])); $columns[] = 'full_name'; }
     } else { invalid('Unknown report type.'); }
     $formatted = array_map(fn($r) => array_intersect_key(array_replace(array_fill_keys($columns, null), $r), array_flip($columns)), $data);
     if ($action === 'report') { respond(['columns' => $columns, 'rows' => $formatted, 'total' => count($formatted)]); }

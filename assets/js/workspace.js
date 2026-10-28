@@ -2,13 +2,13 @@
 window.Workspace={
  type:'',stage:'',sheet:'',
  name(){return App.meta.interns.find(p=>p.employee_id===App.state.employee_id)?.full_name||'All interns';},
- stageOf(module,r){return (module==='projects'&&r.review_status==='in_review'?'ready_for_review':({pending:'not_started',not_started:'not_started',completed:'completed',testing:'ready_for_review'}[r[ModuleConfig[module].status]]||'in_progress'));},
+ stageOf(module,r){return (module==='projects'&&r.review_status==='in_review'?'ready_for_review':({pending:'not_started',not_started:'not_started',ready_for_review:'ready_for_review',completed:'completed'}[r[ModuleConfig[module].status]]||'in_progress'));},
  actions(){return '<button class="btn btn-light" id="quickLog">+ Daily log</button><button class="btn btn-primary" id="quickAssign">+ Assign task</button>';},
  bindActions(){App.$('quickLog')?.addEventListener('click',()=>Records.open('activities'));App.$('quickAssign')?.addEventListener('click',()=>this.assign());},
  assign(){Records.open(this.sheet==='projects'?'projects':'tasks');},
  table(items){
   const A=App;
-  return items.length?`<div class="table-responsive"><table class="table table-hover work-table"><thead><tr><th>Task / expected output</th><th>Type</th><th>Assigned to</th><th>Stage</th><th>Due</th><th>Progress</th><th></th></tr></thead><tbody>${items.map(r=>`<tr><td class="title-cell"><button class="task-title" data-record-action="edit" data-module="${r.module}" data-id="${r.id}">${A.esc(r.title)}</button><div class="subtext">${A.label(r.type)}${r.overdue?' Â· '+A.badge('overdue'):''}</div></td><td class="text-nowrap">${r.module==='projects'?'System development':r.module==='tasks'?'Special task':'Daily log'}</td><td>${A.esc(r.people)}</td><td>${A.badge(r.stage)}</td><td class="text-nowrap">${A.date(r.due_date)}</td><td>${r.module==='activities'?'&mdash;':A.progress(r.progress)}</td><td><button class="link-button" data-record-action="edit" data-module="${r.module}" data-id="${r.id}">Open</button></td></tr>`).join('')}</tbody></table></div>`:A.empty('No tasks here','Assign a task or change your filters.');
+  return items.length?`<div class="table-responsive"><table class="table table-hover work-table"><thead><tr><th>Task / expected output</th><th>Type</th><th>Assigned to</th><th>Stage</th><th>Due</th><th>Progress</th><th></th></tr></thead><tbody>${items.map(r=>`<tr><td class="title-cell"><button class="task-title" data-record-action="edit" data-module="${r.module}" data-id="${r.id}">${A.esc(r.title)}</button><div class="subtext">${A.label(r.type)}${r.overdue?' - '+A.badge('overdue'):''}</div></td><td class="text-nowrap">${r.module==='projects'?'System development':r.module==='tasks'?'Special task':'Daily log'}</td><td>${A.esc(r.people)}</td><td>${A.badge(r.stage)}</td><td class="text-nowrap">${A.date(r.due_date)}</td><td>${r.module==='activities'?'&mdash;':A.progress(r.progress)}</td><td><button class="link-button" data-record-action="edit" data-module="${r.module}" data-id="${r.id}">Open</button></td></tr>`).join('')}</tbody></table></div>`:A.empty('No tasks here','Assign a task or change your filters.');
  },
  async renderWork(){
   const A=App,d=await A.api('work');
@@ -17,7 +17,22 @@ window.Workspace={
   const counts={all:scoped.length,overdue:scoped.filter(r=>r.overdue).length};
   for(const stage of ['not_started','in_progress','ready_for_review','completed'])counts[stage]=scoped.filter(r=>r.stage===stage).length;
   const items=scoped.filter(r=>(!this.stage||(this.stage==='overdue'?r.overdue:r.stage===this.stage)));
-  A.$('pageContent').innerHTML=`<div class="workspace-context"><div><span class="context-dot"></span><strong>${A.esc(this.name())}</strong><span>Special tasks and system development in one place</span></div></div><section class="panel"><div class="work-tabs" aria-label="Task sheets">${[['','All tasks'],['tasks','Special tasks'],['projects','System development']].map(([value,label])=>`<button class="work-tab ${this.sheet===value?'selected':''}" data-work-sheet="${value}">${label}<span>${d.rows.filter(r=>!value||r.module===value).length}</span></button>`).join('')}</div><div class="work-tabs work-stage-tabs">${[['','All stages',counts.all],['not_started','Not started',counts.not_started],['in_progress','In progress',counts.in_progress],['ready_for_review','Ready for review',counts.ready_for_review],['completed','Completed',counts.completed],['overdue','Overdue',counts.overdue]].map(([value,label,count])=>`<button class="work-tab ${this.stage===value?'selected':''}" data-work-stage="${value}">${label}<span>${count}</span></button>`).join('')}</div><div class="table-toolbar"><form id="workSearch" class="search d-flex gap-2"><input id="workQuery" class="form-control" type="search" placeholder="Search tasks or people" aria-label="Search tasks" value="${A.esc(A.state.search)}"><button class="btn btn-light">Search</button></form><span class="record-count">${items.length} tasks</span></div>${this.table(items)}</section><p class="kpi-note">Open a task to update progress, submit for review or leave feedback. Existing imported assignments remain separate records.</p>`;
+  A.$('pageContent').innerHTML=`
+  <section class="panel">
+  <div class="work-tabs" aria-label="Task sheets">${[['','All tasks'],['tasks','Special tasks'],['projects','System development']].map(([value,label])=>`
+    <button class="work-tab ${this.sheet===value?'selected':''}" data-work-sheet="${value}">${label}
+        <span>${d.rows.filter(r=>!value||r.module===value).length}</span>
+    </button>`).join('')}
+  </div>
+  <div class="work-tabs work-stage-tabs">${[['','All stages',counts.all],['not_started','Not started',counts.not_started],['in_progress','In progress',counts.in_progress],['ready_for_review','Ready for review',counts.ready_for_review],['completed','Completed',counts.completed],['overdue','Overdue',counts.overdue]].map(([value,label,count])=>`
+    <button class="work-tab ${this.stage===value?'selected':''}" data-work-stage="${value}">${label}
+        <span>${count}</span>
+    </button>`).join('')}
+  </div>
+  <div class="table-toolbar"><form id="workSearch" class="search d-flex gap-2"><input id="workQuery" class="form-control" type="search" placeholder="Search tasks or people" aria-label="Search tasks" value="${A.esc(A.state.search)}">
+    <button class="btn btn-light">Search</button></form>
+        <span class="record-count">${items.length} tasks</span>
+  </div>${this.table(items)}</section>`;
   A.$('addTask').onclick=()=>this.assign();
   A.$('exportWork').onclick=()=>A.export('work',{sort:'',source:this.sheet,stage:this.stage});
   document.querySelectorAll('[data-work-sheet]').forEach(b=>b.onclick=()=>{this.sheet=b.dataset.workSheet;this.stage='';A.load();});
@@ -28,9 +43,9 @@ window.Workspace={
   const A=App,[d,t]=await Promise.all([A.api('dashboard'),A.api('team')]);
   const work=t.work,counts=[work.filter(r=>r.stage!=='completed').length,work.filter(r=>r.stage==='ready_for_review').length,work.filter(r=>r.overdue).length];
   const attention=work.filter(r=>r.stage==='ready_for_review'||r.overdue);
-  A.$('pageActions').innerHTML=this.actions();
-  A.$('pageContent').innerHTML=`<div class="stats-grid">${['Open tasks','Ready for review','Overdue tasks'].map((label,i)=>`<button class="stat-card stat-link" data-dashboard-stage="${['','ready_for_review','overdue'][i]}"><span class="stat-icon">${A.icon(['list-task','check2-circle','clock'][i])}</span><span><span class="stat-label d-block">${label}</span><span class="stat-value d-block">${counts[i]}</span></span></button>`).join('')}</div><div class="section-kicker"><strong>Team at a glance</strong><span>Select an intern to open their workspace</span></div><div class="team-grid">${t.people.filter(p=>p.is_active&&(!A.state.employee_id||p.employee_id===A.state.employee_id)).map(p=>`<button class="person-card" data-person="${A.esc(p.employee_id)}"><span class="person-avatar">${A.esc(p.full_name.split(' ').map(n=>n[0]).slice(0,2).join(''))}</span><span><strong>${A.esc(p.full_name)}</strong><small class="intern-status ${p.is_active?'intern-active':'intern-inactive'}">${p.is_active?'Active':'Inactive'}</small><small>${p.active} open tasks Â· ${p.logs} daily logs</small><small>${p.review} to review</small></span><span class="person-arrow">â†’</span></button>`).join('')}</div><section class="panel mb-4"><div class="panel-header"><div><h2>Needs attention</h2><div class="panel-subtitle">Deliverables to review and work needing support</div></div><button class="link-button" id="allWork">All tasks â†’</button></div>${attention.length?this.table(attention):'<div class="calm-empty">'+A.icon('check2-circle')+'<div><strong>Nothing needs attention</strong><span>No overdue or review-ready tasks in this selection.</span></div></div>'}</section><div class="charts-grid"><section class="panel"><div class="panel-header"><div><h2>Weekly activity quantities</h2><div class="panel-subtitle">Recorded work volume, not a performance score</div></div></div><div class="panel-body"><div class="chart-wrap"><canvas id="teamTrend" aria-label="Weekly activity quantities" role="img"></canvas></div></div></section><section class="panel"><div class="panel-header"><div><h2>Recent daily logs</h2><div class="panel-subtitle">Work completed, learning and progress</div></div><button class="link-button" id="allLogs">View all â†’</button></div>${t.recent.length?'<div class="recent-list">'+t.recent.map(r=>`<button class="recent-item" data-record-action="view" data-module="activities" data-id="${r.activity_id}"><span class="recent-date">${A.date(r.activity_date)}</span><strong>${A.esc(r.task_title)}</strong><span>${A.esc(r.full_name)} Â· ${A.label(r.status)}</span></button>`).join('')+'</div>':A.empty('No daily logs yet','Use + Daily log to record an update.')}</section></div>`;
-  this.bindActions(); A.$('allWork').onclick=()=>A.change({view:'tasks'});A.$('allLogs').onclick=()=>A.change({view:'activities'});
+  A.$('pageActions').innerHTML='';
+  A.$('pageContent').innerHTML=`<div class="stats-grid">${['Open tasks','Ready for review','Overdue tasks'].map((label,i)=>`<button class="stat-card stat-link" data-dashboard-stage="${['','ready_for_review','overdue'][i]}"><span class="stat-icon">${A.icon(['list-task','check2-circle','clock'][i])}</span><span><span class="stat-label d-block">${label}</span><span class="stat-value d-block">${counts[i]}</span></span></button>`).join('')}</div><div class="section-kicker"><strong>Team at a glance</strong><span>Select an intern to open their workspace</span></div><div class="team-grid">${t.people.filter(p=>p.is_active&&(!A.state.employee_id||p.employee_id===A.state.employee_id)).map(p=>`<button class="person-card" data-person="${A.esc(p.employee_id)}"><span class="person-avatar">${A.esc(p.full_name.split(' ').map(n=>n[0]).slice(0,2).join(''))}</span><span><strong>${A.esc(p.full_name)}</strong><small class="intern-status ${p.is_active?'intern-active':'intern-inactive'}">${p.is_active?'Active':'Inactive'}</small><small>${p.active} open tasks - ${p.logs} daily logs</small><small>${p.review} to review</small></span><span class="person-arrow"></span></button>`).join('')}</div><section class="panel mb-4"><div class="panel-header"><div><h2>Needs attention</h2><div class="panel-subtitle">Deliverables to review and work needing support</div></div><button class="link-button" id="allWork">All tasks </button></div>${attention.length?this.table(attention):'<div class="calm-empty">'+A.icon('check2-circle')+'<div><strong>Nothing needs attention</strong><span>No overdue or review-ready tasks in this selection.</span></div></div>'}</section><div class="charts-grid"><section class="panel"><div class="panel-header"><div><h2>Weekly activity quantities</h2><div class="panel-subtitle">Recorded work volume, not a performance score</div></div></div><div class="panel-body"><div class="chart-wrap"><canvas id="teamTrend" aria-label="Weekly activity quantities" role="img"></canvas></div></div></section><section class="panel"><div class="panel-header"><div><h2>Recent daily logs</h2><div class="panel-subtitle">Work completed, learning and progress</div></div><button class="link-button" id="allLogs">View all </button></div>${t.recent.length?'<div class="recent-list">'+t.recent.map(r=>`<button class="recent-item" data-record-action="view" data-module="activities" data-id="${r.activity_id}"><span class="recent-date">${A.date(r.activity_date)}</span><strong>${A.esc(r.task_title)}</strong><span>${A.esc(r.full_name)} - ${A.label(r.status)}</span></button>`).join('')+'</div>':A.empty('No daily logs yet','Use + Daily log to record an update.')}</section></div>`;
+  A.$('allWork').onclick=()=>A.change({view:'tasks'});A.$('allLogs').onclick=()=>A.change({view:'activities'});
   document.querySelectorAll('[data-person]').forEach(b=>b.onclick=()=>A.change({employee_id:b.dataset.person}));
   document.querySelectorAll('[data-dashboard-stage]').forEach(b=>b.onclick=()=>{this.stage=b.dataset.dashboardStage;A.change({view:'tasks'});});
   A.chart('teamTrend','line',Object.keys(d.trend),[{label:'Activity quantity',data:Object.values(d.trend),borderColor:'#9273ee',backgroundColor:'#9273ee15',fill:true,tension:.3,pointRadius:3,borderWidth:2}]);
@@ -43,13 +58,11 @@ window.Workspace={
    if(module!=='activities'){
     html+=select('work_kind','Task type',[['special_task','Special task'],['system_development','System development']],module==='projects'?'system_development':'special_task');
    }
-   let editor='';try{editor=localStorage.getItem('internHub.editor')||'';}catch{}
-   html+=`<div class="col-12"><label class="form-label" for="update_comment">Update / supervisor feedback</label><textarea id="update_comment" class="form-control" rows="2" maxlength="4000" placeholder="Leave a progress note or explain requested changes"></textarea></div><div class="col-12"><label class="form-label" for="update_editor">Updated by (optional)</label><input id="update_editor" class="form-control" maxlength="100" list="peopleNames" value="${A.esc(editor)}" placeholder="Your name"><small class="text-muted">Shared workspace Â· names are self-reported</small></div>`;
+   html+=`<div class="col-12"><label class="form-label" for="update_comment">Update / supervisor feedback</label><textarea id="update_comment" class="form-control" rows="2" maxlength="4000" placeholder="Leave a progress note or explain requested changes"></textarea></div>`;
   }else{
    html+=`<div class="col-12">${module==='activities'?'':A.badge(stage)}</div>`;
 
   }
-  if(id){const events=await A.api('history',{module,id});html+=`<div class="col-12"><div class="form-section-heading"><strong>Change history</strong><span class="form-hint">Names are self-reported</span></div><div class="history-list">${events.map(e=>`<div class="history-item"><strong>${A.esc(e.editor)}</strong> <span>${A.label(e.action)} Â· ${A.esc(e.created_at)}</span>${e.comment?`<p>${A.esc(e.comment)}</p>`:''}</div>`).join('')||'<p class="form-hint">Imported record. New updates will appear here.</p>'}</div></div>`;}
   A.$('modalFields').insertAdjacentHTML('beforeend',html);
   if(!viewOnly && module!=='activities'){
    const status=A.$('field_'+ModuleConfig[module].status),progress=A.$('field_progress_percent');
@@ -97,12 +110,11 @@ Records.open=async function(module,id=null,viewOnly=false){
 Records.save=async function(event){
  event.preventDefault();if(this.saving||this.current?.viewOnly)return;
  const A=App,cur=this.current,record=Object.fromEntries(new FormData(A.$('recordForm'))),another=event.submitter?.id==='saveAnother';
- const comment=A.$('update_comment').value.trim(),editor=A.$('update_editor').value.trim();
+ const comment=A.$('update_comment').value.trim();
  if(A.$('update_comment').required&&!comment){A.$('update_comment').reportValidity();return;}
  this.saving=true;A.$('saveRecordButton').disabled=true;A.$('saveRecordButton').textContent='Savingâ€¦';if(A.$('saveAnother'))A.$('saveAnother').disabled=true;
  try{
-  await A.api('save',{module:cur.module},{id:cur.id,version:cur.version,record,editor,comment});
-  try{localStorage.setItem('internHub.editor',editor);}catch{}
+  await A.api('save',{module:cur.module},{id:cur.id,version:cur.version,record,comment});
   this.formChanged=false;
   if(!this.modalReady)await new Promise(resolve=>A.$('recordModal').addEventListener('shown.bs.modal',resolve,{once:true}));
   // Wait until Bootstrap finishes opening before requesting a close.

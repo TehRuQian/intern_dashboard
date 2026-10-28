@@ -226,3 +226,13 @@ h1{font-size:30px}.page-heading p{font-size:14px;color:#655b73}.eyebrow{font-siz
 @media(max-width:767px){.daily-timeline{padding:16px 12px;gap:22px}.daily-date-group{padding-left:16px}.daily-date-heading:before{left:-23px}.daily-log-card{padding:14px}.daily-card-heading{flex-wrap:wrap;gap:8px}}
 .person-card .intern-active{color:#35724e}
 .person-card .intern-inactive{color:#728098}
+.report-shell{background:transparent}
+.report-controls{display:flex;align-items:end;gap:14px;flex-wrap:wrap;background:#fff;border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:18px}
+.report-controls>div{min-width:190px}.report-controls label{display:block;font-size:11px;font-weight:600;color:#766982;margin-bottom:7px}.report-count{margin-left:auto;align-self:center;color:#7b6d88;font-size:13px}
+.report-heading{display:flex;justify-content:space-between;align-items:end;margin:2px 2px 14px}.report-heading h2{font-size:20px;color:#3b304a;margin:0 0 4px}.report-heading p{color:#776b82;font-size:13px;margin:0}
+.report-card-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.report-card{background:#fff;border:1px solid #ded5e8;border-radius:12px;padding:20px;box-shadow:0 3px 12px #4f315408}
+.report-card-header{display:flex;justify-content:space-between;align-items:flex-start;gap:15px;padding-bottom:14px;margin-bottom:14px;border-bottom:1px solid #eee8f2}.report-card-header h3{font-size:16px;color:#42304f;line-height:1.4;margin:3px 0 0}.report-card-type{font-size:10px;color:#9279a1;text-transform:uppercase;letter-spacing:.7px}
+.report-card-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 20px}.report-field{min-width:0}.report-field-label{display:block;color:#8a7b96;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px}.report-field-value{color:#55435f;font-size:13px;overflow-wrap:anywhere;white-space:pre-wrap}.report-field-value .progress{max-width:180px}
+.report-shell>.table-bottom{margin-top:18px;background:#fff;border:1px solid var(--border);border-radius:10px}
+@media(max-width:900px){.report-card-list{grid-template-columns:1fr}}
+@media(max-width:600px){.report-controls>div{width:100%}.report-count{margin-left:0;width:100%}.report-card-fields{grid-template-columns:1fr}.report-card{padding:16px}}

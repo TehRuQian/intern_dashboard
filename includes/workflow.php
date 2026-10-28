@@ -32,7 +32,7 @@ function sync_work_completion(string $module, array $data, ?array $existing): ar
 function work_stage(string $module, array $r): string {
     $status = $r[modules()[$module]['status']];
     if ($module === 'projects' && $r['review_status'] === 'in_review') { return 'ready_for_review'; }
-    return ['pending'=>'not_started','not_started'=>'not_started','completed'=>'completed','testing'=>'ready_for_review'][$status] ?? 'in_progress';
+    return ['pending'=>'not_started','not_started'=>'not_started','ready_for_review'=>'ready_for_review','completed'=>'completed'][$status] ?? 'in_progress';
 }
 function work_items(array $f): array {
     $f['status'] = ''; $result = [];

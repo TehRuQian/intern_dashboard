@@ -4,11 +4,15 @@ ini_set('display_errors', '0');
 ini_set('log_errors', '1');
 date_default_timezone_set('Asia/Kuala_Lumpur');
 ini_set('session.use_strict_mode', '1');
-session_set_cookie_params(['httponly' => true, 'samesite' => 'Strict', 'secure' => !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off']);
+session_name('INTERNHUBSESSID');
+$requestIsSecure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+    || strtolower((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https';
+session_set_cookie_params(['path' => '/', 'httponly' => true, 'samesite' => 'Lax', 'secure' => $requestIsSecure]);
 $sessionDirectory = dirname(__DIR__) . '/storage/sessions';
-if (!is_dir($sessionDirectory) && !mkdir($sessionDirectory, 0700, true) && !is_dir($sessionDirectory)) { throw new RuntimeException('Session storage is unavailable.'); }
-session_save_path($sessionDirectory);
-session_start();
+if ((is_dir($sessionDirectory) || @mkdir($sessionDirectory, 0700, true)) && is_writable($sessionDirectory)) {
+    session_save_path($sessionDirectory);
+}
+if (!session_start()) { throw new RuntimeException('The PHP session could not be started.'); }
 if (empty($_SESSION['csrf'])) { $_SESSION['csrf'] = bin2hex(random_bytes(32)); }
 require_once dirname(__DIR__) . '/config/db.php';
 require_once __DIR__ . '/workflow.php';
@@ -90,10 +94,10 @@ function modules(): array {
             'statuses' => ['pending','in_progress','completed']],
         'tasks' => ['table' => 'special_tasks', 'id' => 'task_id', 'date' => 'assigned_date', 'status' => 'status', 'pic' => 'pic',
             'search' => ['task_title','description','pic','modification_request'], 'fields' => ['task_title','description','pic','assigned_date','start_date','due_date','tat_description','status','priority','progress_percent','modification_request'],
-            'statuses' => ['pending','in_progress','on_hold','completed']],
+            'statuses' => ['pending','in_progress','ready_for_review','completed']],
         'projects' => ['table' => 'projects', 'id' => 'project_id', 'date' => 'assigned_date', 'status' => 'development_status', 'pic' => 'developers',
             'search' => ['project_name','description','developers','improvement_notes'], 'fields' => ['project_name','project_type','description','developers','assigned_date','start_date','due_date','development_status','review_status','progress_percent','project_link','improvement_notes'],
-            'statuses' => ['not_started','in_progress','testing','completed','on_hold']],
+            'statuses' => ['not_started','in_progress','ready_for_review','completed']],
     ];
 }
 function calendar(): array { return require dirname(__DIR__) . '/config/work_weeks.php'; }
